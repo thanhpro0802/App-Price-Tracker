@@ -86,7 +86,7 @@ async function fetchForexPrices(): Promise<Record<string, number>> {
   const out: Record<string, number> = {};
   for (const [symbol, derive] of Object.entries(FOREX_PAIRS)) {
     const price = derive(data.rates);
-    if (price !== null) out[symbol] = Number(price.toFixed(4));
+    if (price !== null) out[symbol] = Math.round(price * 10000) / 10000;
   }
   return out;
 }
@@ -118,10 +118,15 @@ async function fetchGoldPrice(symbol: string): Promise<number | null> {
 const GOLD_SYMBOLS = ['XAU', 'XAG'];
 
 async function fetchPreciousMetalPrices(): Promise<Record<string, number>> {
+  const results = await Promise.all(
+    GOLD_SYMBOLS.map(async (sym) => {
+      const price = await fetchGoldPrice(sym);
+      return [sym, price] as const;
+    }),
+  );
+
   const out: Record<string, number> = {};
-  // Fetch sequentially to be gentle with the free endpoint
-  for (const sym of GOLD_SYMBOLS) {
-    const price = await fetchGoldPrice(sym);
+  for (const [sym, price] of results) {
     if (price !== null) out[sym] = price;
   }
   return out;
@@ -147,7 +152,7 @@ export async function fetchAllRealPrices(): Promise<Record<string, number>> {
   const count = Object.keys(merged).length;
   if (count > 0) {
     console.log(`[ExternalPriceService] Fetched ${count} real prices:`,
-      Object.entries(merged).map(([s, p]) => `${s}=${ p}`).join(', '));
+      Object.entries(merged).map(([s, p]) => `${s}=${p}`).join(', '));
   } else {
     console.warn('[ExternalPriceService] All external APIs unavailable – will use mock prices');
   }
