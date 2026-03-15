@@ -24,13 +24,38 @@ async function tryApi<T>(apiFn: () => Promise<T>, mockFn: () => Promise<T>): Pro
 export const api = {
   getAssets: (): Promise<Asset[]> =>
     tryApi(
-      async () => (await client.get<Asset[]>('/assets')).data,
+      async () => {
+        const assets = (await client.get<Asset[]>('/assets')).data;
+        // Enrich assets with current prices from dashboard
+        try {
+          const dashboard = (await client.get('/dashboard')).data;
+          const prices: Array<{ asset: Asset; currentPrice: number; changePercent: number }> = dashboard.prices ?? [];
+          const priceMap = new Map(prices.map(p => [p.asset.id, p]));
+          return assets.map(a => {
+            const pd = priceMap.get(a.id);
+            if (pd) {
+              return { ...a, current_price: pd.currentPrice, price_change_percent: pd.changePercent, last_updated: new Date().toISOString() };
+            }
+            return a;
+          });
+        } catch {
+          return assets;
+        }
+      },
       mockApi.getAssets
     ),
 
   getAsset: (id: number): Promise<Asset> =>
     tryApi(
-      async () => (await client.get<Asset>(`/assets/${id}`)).data,
+      async () => {
+        const asset = (await client.get<Asset>(`/assets/${id}`)).data;
+        try {
+          const price = (await client.get(`/prices/${id}/latest`)).data;
+          return { ...asset, current_price: price.price, last_updated: price.timestamp };
+        } catch {
+          return asset;
+        }
+      },
       () => mockApi.getAsset(id)
     ),
 
@@ -54,7 +79,23 @@ export const api = {
 
   getWatchlist: (): Promise<WatchlistItem[]> =>
     tryApi(
-      async () => (await client.get<WatchlistItem[]>('/watchlist')).data,
+      async () => {
+        const items = (await client.get<WatchlistItem[]>('/watchlist')).data;
+        // Enrich watchlist items with asset data
+        const enriched = await Promise.all(
+          items.map(async (item) => {
+            if (item.asset) return item;
+            try {
+              const asset = (await client.get<Asset>(`/assets/${item.asset_id}`)).data;
+              const price = (await client.get(`/prices/${item.asset_id}/latest`)).data;
+              return { ...item, asset: { ...asset, current_price: price.price, last_updated: price.timestamp } };
+            } catch {
+              return item;
+            }
+          })
+        );
+        return enriched;
+      },
       mockApi.getWatchlist
     ),
 
@@ -78,7 +119,21 @@ export const api = {
 
   getAlerts: (): Promise<Alert[]> =>
     tryApi(
-      async () => (await client.get<Alert[]>('/alerts')).data,
+      async () => {
+        const alerts = (await client.get<Alert[]>('/alerts')).data;
+        const enriched = await Promise.all(
+          alerts.map(async (alert) => {
+            if (alert.asset) return alert;
+            try {
+              const asset = (await client.get<Asset>(`/assets/${alert.asset_id}`)).data;
+              return { ...alert, asset };
+            } catch {
+              return alert;
+            }
+          })
+        );
+        return enriched;
+      },
       mockApi.getAlerts
     ),
 
@@ -108,7 +163,21 @@ export const api = {
 
   getDashboard: (): Promise<DashboardStats> =>
     tryApi(
-      async () => (await client.get<DashboardStats>('/dashboard')).data,
+      async () => {
+        const raw = (await client.get('/dashboard')).data;
+        const stats = raw.stats ?? raw;
+        const increase = stats.biggestIncrease;
+        const drop = stats.biggestDrop;
+        return {
+          totalTracked: stats.totalTracked ?? 0,
+          biggestIncrease: increase
+            ? { ...(increase.asset ?? increase), price_change_percent: increase.changePercent ?? increase.price_change_percent }
+            : null,
+          biggestDrop: drop
+            ? { ...(drop.asset ?? drop), price_change_percent: drop.changePercent ?? drop.price_change_percent }
+            : null,
+        } as DashboardStats;
+      },
       mockApi.getDashboard
     ),
 };
