@@ -2,6 +2,7 @@ import { AssetRepository } from '../repositories/AssetRepository';
 import { PriceRepository } from '../repositories/PriceRepository';
 import { isDatabaseAvailable, query as dbQuery } from '../config/database';
 import { store } from '../config/inMemoryStore';
+import { fetchAllRealPrices } from './ExternalPriceService';
 
 const assetRepository = new AssetRepository();
 const priceRepository = new PriceRepository();
@@ -56,16 +57,33 @@ export class PriceUpdateService {
   async updateAllPrices(): Promise<void> {
     const assets = await assetRepository.findAll();
 
+    // Try fetching real prices from external APIs
+    const realPrices = await fetchAllRealPrices();
+
+    let realCount = 0;
+    let mockCount = 0;
+
     for (const asset of assets) {
       try {
-        const price = generatePrice(asset.symbol);
+        let price: number;
+        if (realPrices[asset.symbol] !== undefined) {
+          price = realPrices[asset.symbol];
+          lastPrices[asset.symbol] = price; // keep mock walk in sync
+          realCount++;
+        } else {
+          price = generatePrice(asset.symbol);
+          mockCount++;
+        }
         await priceRepository.insertPrice(asset.id, price);
       } catch (error) {
         console.error(`Failed to update price for ${asset.symbol}:`, error);
       }
     }
 
-    console.log(`[${new Date().toISOString()}] Prices updated for ${assets.length} assets`);
+    console.log(
+      `[${new Date().toISOString()}] Prices updated for ${assets.length} assets` +
+      ` (${realCount} real, ${mockCount} mock)`
+    );
   }
 
   async seedHistoricalPrices(): Promise<void> {
