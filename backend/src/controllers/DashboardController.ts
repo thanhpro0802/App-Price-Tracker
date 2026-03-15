@@ -13,16 +13,10 @@ export class DashboardController {
       const watchlist = await watchlistService.getUserWatchlist(DEMO_USER_ID);
       const pricesWithChange = await priceService.getAllPricesWithChange();
 
-      // Filter to only tracked (watchlisted) assets if any, otherwise show all
-      const tracked =
-        watchlist.length > 0
-          ? pricesWithChange.filter(p => watchlist.some(w => w.asset_id === p.asset.id))
-          : pricesWithChange;
-
       let biggestIncrease: DashboardStats['biggestIncrease'] = null;
       let biggestDrop: DashboardStats['biggestDrop'] = null;
 
-      for (const item of tracked) {
+      for (const item of pricesWithChange) {
         if (item.changePercent === null) continue;
 
         if (!biggestIncrease || item.changePercent > (biggestIncrease.changePercent ?? -Infinity)) {
@@ -41,7 +35,7 @@ export class DashboardController {
 
       res.json({
         stats,
-        prices: tracked,
+        prices: pricesWithChange,
       });
     } catch (error) {
       res.status(500).json({ error: 'Failed to fetch dashboard data' });

@@ -9,13 +9,17 @@ const client = axios.create({
 });
 
 let useMock = false;
+let mockSince = 0;
+const MOCK_RETRY_MS = 30_000;
 
 async function tryApi<T>(apiFn: () => Promise<T>, mockFn: () => Promise<T>): Promise<T> {
-  if (useMock) return mockFn();
+  if (useMock && Date.now() - mockSince < MOCK_RETRY_MS) return mockFn();
+  if (useMock) useMock = false; // retry after timeout
   try {
     return await apiFn();
   } catch {
     useMock = true;
+    mockSince = Date.now();
     console.info('[API] Backend unavailable — using demo data');
     return mockFn();
   }
