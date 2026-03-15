@@ -1,5 +1,7 @@
 import { AssetRepository } from '../repositories/AssetRepository';
 import { PriceRepository } from '../repositories/PriceRepository';
+import { isDatabaseAvailable, query as dbQuery } from '../config/database';
+import { store } from '../config/inMemoryStore';
 
 const assetRepository = new AssetRepository();
 const priceRepository = new PriceRepository();
@@ -88,15 +90,11 @@ export class PriceUpdateService {
           price: Number(price.toFixed(8)),
           timestamp,
         };
-        // For in-memory store, push directly; for DB, use insertPrice
-        const { isDatabaseAvailable } = require('../config/database');
         if (!isDatabaseAvailable()) {
-          const { store } = require('../config/inMemoryStore');
           priceRecord.id = store.getNextId('prices');
           store.prices.push(priceRecord);
         } else {
-          const { query } = require('../config/database');
-          await query(
+          await dbQuery(
             'INSERT INTO prices (asset_id, price, timestamp) VALUES ($1, $2, $3)',
             [asset.id, priceRecord.price, timestamp]
           );

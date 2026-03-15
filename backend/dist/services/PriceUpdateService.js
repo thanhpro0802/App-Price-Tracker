@@ -3,6 +3,8 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.PriceUpdateService = void 0;
 const AssetRepository_1 = require("../repositories/AssetRepository");
 const PriceRepository_1 = require("../repositories/PriceRepository");
+const database_1 = require("../config/database");
+const inMemoryStore_1 = require("../config/inMemoryStore");
 const assetRepository = new AssetRepository_1.AssetRepository();
 const priceRepository = new PriceRepository_1.PriceRepository();
 // Base prices used when real APIs are unavailable
@@ -78,16 +80,12 @@ class PriceUpdateService {
                     price: Number(price.toFixed(8)),
                     timestamp,
                 };
-                // For in-memory store, push directly; for DB, use insertPrice
-                const { isDatabaseAvailable } = require('../config/database');
-                if (!isDatabaseAvailable()) {
-                    const { store } = require('../config/inMemoryStore');
-                    priceRecord.id = store.getNextId('prices');
-                    store.prices.push(priceRecord);
+                if (!(0, database_1.isDatabaseAvailable)()) {
+                    priceRecord.id = inMemoryStore_1.store.getNextId('prices');
+                    inMemoryStore_1.store.prices.push(priceRecord);
                 }
                 else {
-                    const { query } = require('../config/database');
-                    await query('INSERT INTO prices (asset_id, price, timestamp) VALUES ($1, $2, $3)', [asset.id, priceRecord.price, timestamp]);
+                    await (0, database_1.query)('INSERT INTO prices (asset_id, price, timestamp) VALUES ($1, $2, $3)', [asset.id, priceRecord.price, timestamp]);
                 }
             }
             lastPrices[asset.symbol] = price;
